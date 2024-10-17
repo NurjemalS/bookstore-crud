@@ -1,10 +1,13 @@
 package api
 
 import (
-	"context"
-	"net/http"
 	"bookstore/internal/models"
-	"bookstore/internal/store"
+	repository "bookstore/internal/store"
+	"context"
+	"log"
+	"net/http"
+	"path/filepath"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,7 +19,8 @@ func PostBook(c *gin.Context) {
 		return
 	}
 
-	err := bookRepository.AddBook(context.Background(), newBook)
+	newBook.FilePath = ""
+	err := repository.AddBook(context.Background(), newBook)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"error": "Failed to add book"})
 		return
@@ -26,7 +30,7 @@ func PostBook(c *gin.Context) {
 }
 
 func GetBooks(c *gin.Context) {
-	books, err := bookRepository.GetAllBooks(context.Background())
+	books, err := repository.GetAllBooks(context.Background())
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch books"})
 		return
@@ -37,7 +41,7 @@ func GetBooks(c *gin.Context) {
 
 func GetBookById(c *gin.Context) {
 	id := c.Param("id")
-	book, err := bookRepository.GetBookByID(context.Background(), id)
+	book, err := repository.GetBookByID(context.Background(), id)
 	if err != nil {
 		c.IndentedJSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
@@ -55,7 +59,7 @@ func UpdateBook(c *gin.Context) {
 		return
 	}
 
-	err := bookRepository.UpdateBook(context.Background(), id, updatedBook)
+	err := repository.UpdateBook(context.Background(), id, updatedBook)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book"})
 		return
@@ -66,11 +70,40 @@ func UpdateBook(c *gin.Context) {
 
 func DeleteBook(c *gin.Context) {
 	id := c.Param("id")
-	err := bookRepository.DeleteBook(context.Background(), id)
+	err := repository.DeleteBook(context.Background(), id)
 	if err != nil {
 		c.IndentedJSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 		return
 	}
 
 	c.IndentedJSON(http.StatusOK, gin.H{"message": "Book deleted"})
+}
+
+func UploadFileForBook(c *gin.Context) {
+
+	bookID := c.Param("id")
+
+	// Get file
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upload file"})
+		return
+	}
+
+	destination := filepath.Join("uploads", file.Filename)
+	log.Printf(destination)
+
+	// Save file
+	if err := c.SaveUploadedFile(file, destination); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+		return
+	}
+
+	// Update
+	if err := repository.UpdateBookFilePath(context.Background(), bookID, destination); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book with file"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "File uploaded for a book", "file_path": destination})
 }
